@@ -1,0 +1,6 @@
+/tmp/slurmd/job4058174/slurm_script: line 7: --comment#SBATCH --mail-user=sa17826@bristol.ac.uk: command not found
+/tmp/slurmd/job4058174/slurm_script: line 8: --comment#SBATCH --mail-type=END,FAIL: command not found
+  File "train_cifar.py", line 90
+    transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ColorJitter(args.data_aug_brightness) transforms.ToTensor()])
+                                                                                                                                 ^
+SyntaxError: invalid syntax
