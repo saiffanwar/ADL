@@ -2,7 +2,7 @@
 import time
 from multiprocessing import cpu_count
 from typing import Union, NamedTuple
-
+import os
 import torch
 import torch.backends.cudnn
 import numpy as np
@@ -13,11 +13,13 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
-
+import dataset
 import argparse
 from pathlib import Path
-
+from torch.utils import data
+import pickle
 torch.backends.cudnn.benchmark = True
+cwd = os.getcwd()
 
 parser = argparse.ArgumentParser(
     description="Train a simple CNN on CIFAR-10",
@@ -29,7 +31,7 @@ parser.add_argument("--log-dir", default=Path("logs"), type=Path)
 parser.add_argument("--learning-rate", default=1e-1, type=float, help="Learning rate")
 parser.add_argument(
     "--batch-size",
-    default=128,
+    default=2,
     type=int,
     help="Number of images within each mini-batch",
 )
@@ -79,38 +81,54 @@ class ImageShape(NamedTuple):
     width: int
     channels: int
 
-
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:
     DEVICE = torch.device("cpu")
 
+class Salicon(data.Dataset):
+    def __init__(self, dataset_path):
+        self.dataset = data.Dataset
+
+    def __getitem__(self, index):
+        img = self.dataset[index]['X']
+        img = torch.from_numpy(img.astype(np.float32))
+        sal_map = self.dataset[index]['y']
+        sal_map = torch.from_numpy(sal_map.astype(np.float32)).view(48*48)
+        return img, sal_map
+
+    def __len__(self):
+        return len(self.dataset)
+
 
 def main(args):
+
     transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ColorJitter(args.data_aug_brightness), transforms.ToTensor()])
     args.dataset_root.mkdir(parents=True, exist_ok=True)
-    train_dataset = torchvision.datasets.CIFAR10(
-        args.dataset_root, train=True, download=True, transform=transform
+    
+    # load train/test splits of SALICON dataset
+    train_dataset = Salicon(
+        os.getcwd()[:-6] + "ADL/cw/train.pkl"
     )
-    test_dataset = torchvision.datasets.CIFAR10(
-        args.dataset_root, train=False, download=False, transform=transform
+    test_dataset = Salicon(
+        os.getcwd()[:-6] + "ADL/cw/val.pkl"
     )
-    train_loader = torch.utils.data.DataLoader(
+    
+    self.train_loader = DataLoader(
         train_dataset,
         shuffle=True,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         pin_memory=True,
-        num_workers=args.worker_count,
+        num_workers=1,
     )
-    test_loader = torch.utils.data.DataLoader(
+    self.val_loader = DataLoader(
         test_dataset,
         shuffle=False,
-        batch_size=args.batch_size,
-        num_workers=args.worker_count,
+        batch_size=batch_size,
+        num_workers=1,
         pin_memory=True,
     )
-
-    model = CNN(height=32, width=32, channels=3, class_count=10)
+    model = CNN(height=96, width=96, channels=3)
 
     ## TASK 8: Redefine the criterion to be softmax cross entropy
     criterion = nn.CrossEntropyLoss()
@@ -139,58 +157,58 @@ def main(args):
 
 
 class CNN(nn.Module):
-    def __init__(self, height: int, width: int, channels: int, class_count: int):
+    def __init__(self, height: int, width: int, channels: int):
         super().__init__()
         self.input_shape = ImageShape(height=height, width=width, channels=channels)
-        self.class_count = class_count
+        # self.class_count = class_count
         # print(self.input_shape.channels)
         self.conv1 = nn.Conv2d(
-            in_channels=self.input_shape.channels,
+            in_channels=3,
             out_channels=32,
             kernel_size=(5, 5),
-            padding=(2, 2),
+            padding=2,
         )
         self.initialise_layer(self.conv1)
-        self.pool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-        self.batch2d1 = nn.BatchNorm2d(num_features=32)
-        ## TASK 2-1: Define the second convolutional layer and initialise its parameters
+        self.pool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         self.conv2 = nn.Conv2d(
             in_channels=32,
             out_channels=64,
-            kernel_size=(5, 5),
-            padding=(2, 2),
+            kernel_size=(3,3),
+            padding=1,
         )
         self.initialise_layer(self.conv2)
-        ## TASK 3-1: Define the second pooling layer
-        self.pool2 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-        self.batch2d2 = nn.BatchNorm2d(num_features=64)
-        ## TASK 5-1: Define the first FC layer and initialise its parameters
-        self.fc1 = nn.Linear(4096, 1024)
+        self.pool2 = nn.MaxPool2d(kernel_size=(3, 3), stride=2)
+        self.conv3 = nn.Conv2d(
+            in_channels=64,
+            out_channels=128,
+            kernel_size=(3, 3),
+            padding=1,
+        )
+        self.initialise_layer(self.conv3)
+        self.pool3 = nn.MaxPool2d(kernel_size=(3, 3), stride=2)
+        self.fc1 = nn.Linear(128*11*11, 4608)
         self.initialise_layer(self.fc1)
-        self.batch1d = nn.BatchNorm1d(num_features=1024)
-        ## TASK 6-1: Define the last FC layer and initialise its parameters
-        self.fc2 = nn.Linear(1024, 10)
+        self.fc2 = nn.Linear(2304, 2304)
         self.initialise_layer(self.fc2)
+
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         x = self.conv1(images)
-        x = self.batch2d1(x)
         x = F.relu(x)
         x = self.pool1(x)
-        ## TASK 2-2: Pass x through the second convolutional layer
+
         x = self.conv2(x)
-        x = self.batch2d2(x)
         x = F.relu(x)
-        ## TASK 3-2: Pass x through the second pooling layer
         x = self.pool2(x)
-        ## TASK 4: Flatten the output of the pooling layer so it is of shape
-        ##         (batch_size, 4096)
-        x = torch.flatten(x,start_dim=1)
-        ## TASK 5-2: Pass x through the first fully connected layer
+
+        x = self.conv3(x)
+        x = F.relu(x)
+        x = self.pool3(x)
+
+        x = flatten(x,start_dim=1)
         x = self.fc1(x)
-        x = self.batch1d(x)
-        ## TASK 6-2: Pass x through the last fully connected layer
         x = self.fc2(x)
+
         return x
 
     @staticmethod

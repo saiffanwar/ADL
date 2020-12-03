@@ -92,6 +92,7 @@ def main(args):
     train_dataset = torchvision.datasets.CIFAR10(
         args.dataset_root, train=True, download=True, transform=transform
     )
+    print('dataset type:', type(train_dataset))
     test_dataset = torchvision.datasets.CIFAR10(
         args.dataset_root, train=False, download=False, transform=transform
     )
@@ -102,6 +103,7 @@ def main(args):
         pin_memory=True,
         num_workers=args.worker_count,
     )
+    print('loader type:', type(train_loader))
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
         shuffle=False,
