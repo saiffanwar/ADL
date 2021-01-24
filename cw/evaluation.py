@@ -13,12 +13,11 @@ from scipy import ndimage
 import math
 import argparse
 import pickle
-
+from matplotlib import pyplot as plt
 
 def normalize_map(s_map):
     norm_s_map = (s_map - np.min(s_map)) / (np.max(s_map) - np.min(s_map))
     return norm_s_map
-
 
 def auc_borji(s_map, gt, splits=100, stepsize=0.1):
     s_map = normalize_map(s_map)
@@ -42,7 +41,6 @@ def auc_borji(s_map, gt, splits=100, stepsize=0.1):
 
         allthreshes = np.arange(0, np.max(np.concatenate((Sth, curfix), axis=0)), stepsize)
         allthreshes = allthreshes[::-1]
-
         tp = np.zeros(len(allthreshes) + 2)
         fp = np.zeros(len(allthreshes) + 2)
         tp[-1] = 1.0
@@ -118,7 +116,9 @@ if __name__ == '__main__':
         device = torch.device("cpu")
 
     test_dataset = Salicon(
-            "/mnt/storage/home/sa17826/ADL/cw/val.pkl"
+            # "/mnt/storage/home/sa17826/ADL/cw/val.pkl"
+            "val.pkl"
+
         )
 
     val_loader = DataLoader(
@@ -128,8 +128,10 @@ if __name__ == '__main__':
         num_workers=1,
         pin_memory=True,
     )
-    # modelname = input("Enter a model name: ")
-    model = torch.load('/mnt/storage/home/sa17826/ADL/cw/model.pkl')
+    modelname = input("Enter a model name: ")
+    # model = torch.load('/mnt/storage/home/sa17826/ADL/cw/model.pkl')
+    model = torch.load(modelname, map_location = device)
+
     total_loss = 0
     model.eval()
     preds = []
@@ -142,10 +144,10 @@ if __name__ == '__main__':
             logits = model(batch)
             outputs = logits.cpu().numpy()
             preds.extend(list(outputs))
-    with open("/mnt/storage/home/sa17826/ADL/cw/val.pkl",'rb') as f:
-        gts = pickle.load(f)
+    # with open("/mnt/storage/home/sa17826/ADL/cw/val.pkl",'rb') as f:
+    with open("val.pkl",'rb') as f:
 
-    print("Made predictions, Loaded GTS")
+        gts = pickle.load(f)
 
     cc_scores = []
     auc_borji_scores = []
@@ -177,6 +179,9 @@ if __name__ == '__main__':
     print('AUC Shuffled: {}'.format(np.mean(auc_shuffled_scores)))
 
 
+# CC: 0.6665269482984647
+# AUC Borji: 0.7171691515838832
+# AUC Shuffled: 0.5583539917080914
 
 
 
